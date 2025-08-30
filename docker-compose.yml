@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    restart: unless-stopped
+    command: ["serve"]
+
+  gemma2_2b:
+    image: curlimages/curl
+    container_name: gemma2_model_puller
+    depends_on:
+      - ollama
+    networks:
+      - default
+    command: >
+      /bin/sh -c "
+      echo 'Waiting for Ollama to be ready...';
+      while ! curl -s http://ollama:11434/ > /dev/null; do
+        sleep 2;
+      done;
+      echo 'Ollama is ready. Pulling gemma2:2b model...';
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"gemma2:2b\"}';
+      echo 'Model pull command sent.';
+      "
+    restart: on-failure
+
+  chroma:
+    image: chromadb/chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb-data:/chroma/chroma
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  default:
+
+volumes:
+  chromadb-data:
